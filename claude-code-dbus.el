@@ -1,7 +1,7 @@
 ;;; claude-code-dbus.el --- Track Claude Code sessions via D-Bus -*- lexical-binding: t; -*-
 
 ;; Author: czar
-;; Version: 0.3.0
+;; Version: 0.4.0
 ;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: tools, processes
 ;; URL: https://github.com/holdenrohrer/claude-code-dbus
@@ -52,7 +52,7 @@ Functions receive: EVENT SESSION-ID TOOL-NAME CWD IDE-SESSION-ID NOTIFICATION-TY
 (defvar claude-code-dbus--sessions (make-hash-table :test 'equal)
   "Hash table mapping CLI session-id (UUID) to plist.
 Plist keys: :status :cwd :tool-name :event :last-event-time
-            :ide-session-id :notification-type")
+            :ide-session-id :notification-type :user-title")
 
 (defvar claude-code-dbus--registration nil
   "D-Bus signal registration object.")
@@ -62,14 +62,33 @@ Plist keys: :status :cwd :tool-name :event :last-event-time
 
 ;;; claude-code-ide integration
 
+(defun claude-code-dbus--remove-sessions-for-ide (ide-session-id)
+  "Remove all D-Bus session entries matching IDE-SESSION-ID."
+  (let (to-remove)
+    (maphash (lambda (k v)
+               (when (equal (plist-get v :ide-session-id) ide-session-id)
+                 (push k to-remove)))
+             claude-code-dbus--sessions)
+    (dolist (k to-remove)
+      (remhash k claude-code-dbus--sessions)))
+  (claude-code-dbus--maybe-refresh-list))
+
 (defun claude-code-dbus--inject-session-id-env (orig-fn buffer-name working-dir port continue resume session-id)
   "Advice for `claude-code-ide--create-terminal-session'.
 Injects CLAUDE_CODE_IDE_SESSION_ID into the process environment
-so hook scripts can correlate CLI sessions with Emacs sessions."
+so hook scripts can correlate CLI sessions with Emacs sessions.
+Also registers a kill-buffer-hook to clean up D-Bus sessions when
+the buffer is closed."
   (let ((process-environment
          (cons (format "CLAUDE_CODE_IDE_SESSION_ID=%s" session-id)
                process-environment)))
-    (funcall orig-fn buffer-name working-dir port continue resume session-id)))
+    (prog1 (funcall orig-fn buffer-name working-dir port continue resume session-id)
+      (when-let ((buffer (claude-code-dbus--find-ide-buffer session-id)))
+        (with-current-buffer buffer
+          (let ((sid session-id))
+            (add-hook 'kill-buffer-hook
+                      (lambda () (claude-code-dbus--remove-sessions-for-ide sid))
+                      nil t)))))))
 
 (defun claude-code-dbus--find-ide-buffer (ide-session-id)
   "Find the claude-code-ide buffer for IDE-SESSION-ID.
@@ -134,15 +153,18 @@ NOTIFICATION-TYPE is the notification subtype (may be empty)."
   (let ((status (claude-code-dbus--status-for-event event tool-name notification-type)))
     (if (eq status 'ended)
         (remhash session-id claude-code-dbus--sessions)
-      (puthash session-id
-               (list :status status
-                     :cwd cwd
-                     :tool-name tool-name
-                     :event event
-                     :last-event-time (current-time)
-                     :ide-session-id ide-session-id
-                     :notification-type notification-type)
-               claude-code-dbus--sessions))
+      (let ((existing (gethash session-id claude-code-dbus--sessions))
+            (new (list :status status
+                       :cwd cwd
+                       :tool-name tool-name
+                       :event event
+                       :last-event-time (current-time)
+                       :ide-session-id ide-session-id
+                       :notification-type notification-type)))
+        ;; Preserve user-set title across events
+        (when-let ((ut (plist-get existing :user-title)))
+          (plist-put new :user-title ut))
+        (puthash session-id new claude-code-dbus--sessions)))
     ;; Desktop notification
     (when (and claude-code-dbus-notify
                (member event claude-code-dbus-notify-events))
@@ -200,11 +222,12 @@ NOTIFICATION-TYPE is the notification subtype (may be empty)."
            (push ide-session-id seen-ide-sessions)
            (let* ((status (plist-get plist :status))
                   (event-time (plist-get plist :last-event-time))
+                  (user-title (or (plist-get plist :user-title) ""))
                   (buffer (claude-code-dbus--find-ide-buffer ide-session-id))
-                  (title (claude-code-dbus--get-session-title ide-session-id))
-                  (buf-name (when (and buffer (buffer-live-p buffer))
-                              (buffer-name buffer)))
-                  (display-name (or title buf-name ide-session-id)))
+                  (task (or (claude-code-dbus--get-session-title ide-session-id) ""))
+                  (buf-name (or (when (and buffer (buffer-live-p buffer))
+                                  (buffer-name buffer))
+                                "")))
              (push (list session-id
                          (vector
                           (propertize (claude-code-dbus--status-string status)
@@ -212,8 +235,9 @@ NOTIFICATION-TYPE is the notification subtype (may be empty)."
                                               ('blocked 'warning)
                                               ('active 'success)
                                               (_ 'shadow)))
-                          display-name
-                          (or buf-name "")
+                          user-title
+                          task
+                          buf-name
                           (claude-code-dbus--format-age event-time)))
                    entries)))))
      claude-code-dbus--sessions)
@@ -247,16 +271,28 @@ NOTIFICATION-TYPE is the notification subtype (may be empty)."
      (t
       (message "No claude-code-ide session associated")))))
 
+(defun claude-code-dbus-rename-session ()
+  "Set a user-chosen title for the session at point."
+  (interactive)
+  (let* ((session-id (tabulated-list-get-id))
+         (plist (gethash session-id claude-code-dbus--sessions))
+         (current (or (plist-get plist :user-title) ""))
+         (new-title (read-string "Title: " current)))
+    (plist-put plist :user-title new-title)
+    (tabulated-list-revert)))
+
 (defvar claude-code-dbus-sessions-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "RET") #'claude-code-dbus-jump-to-session)
+    (define-key map (kbd "R") #'claude-code-dbus-rename-session)
     (define-key map (kbd "g") #'tabulated-list-revert)
     map)
   "Keymap for `claude-code-dbus-sessions-mode'.")
 
 (with-eval-after-load 'evil
   (evil-define-key* 'normal claude-code-dbus-sessions-mode-map
-    (kbd "RET") #'claude-code-dbus-jump-to-session)
+    (kbd "RET") #'claude-code-dbus-jump-to-session
+    (kbd "R") #'claude-code-dbus-rename-session)
   (evil-define-key* 'motion claude-code-dbus-sessions-mode-map
     (kbd "RET") #'claude-code-dbus-jump-to-session))
 
@@ -266,7 +302,8 @@ NOTIFICATION-TYPE is the notification subtype (may be empty)."
 \\{claude-code-dbus-sessions-mode-map}"
   (setq tabulated-list-format
         [("Status" 10 t)
-         ("Title" 35 t)
+         ("Title" 20 t)
+         ("Task" 35 t)
          ("Buffer" 25 t)
          ("Age" 6 t)])
   (setq tabulated-list-entries #'claude-code-dbus--list-entries)
