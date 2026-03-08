@@ -83,9 +83,12 @@ Returns the buffer or nil."
 
 (defun claude-code-dbus--setup-ide-integration ()
   "Set up integration with claude-code-ide if available."
-  (when (fboundp 'claude-code-ide--create-terminal-session)
-    (advice-add 'claude-code-ide--create-terminal-session :around
-                #'claude-code-dbus--inject-session-id-env)))
+  (if (fboundp 'claude-code-ide--create-terminal-session)
+      (advice-add 'claude-code-ide--create-terminal-session :around
+                  #'claude-code-dbus--inject-session-id-env)
+    (with-eval-after-load 'claude-code-ide
+      (advice-add 'claude-code-ide--create-terminal-session :around
+                  #'claude-code-dbus--inject-session-id-env))))
 
 (defun claude-code-dbus--teardown-ide-integration ()
   "Remove claude-code-ide integration."
