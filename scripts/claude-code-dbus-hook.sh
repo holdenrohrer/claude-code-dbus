@@ -10,6 +10,7 @@ session_id=$(echo "$input" | jq -r '.session_id // "unknown"')
 tool_name=$(echo "$input" | jq -r '.tool_name // ""')
 cwd=$(echo "$input" | jq -r '.cwd // ""')
 ide_session_id="${CLAUDE_CODE_IDE_SESSION_ID:-}"
+notification_type=$(echo "$input" | jq -r '.notification_type // ""')
 
 dbus-send --session \
   /com/claude/code \
@@ -18,4 +19,5 @@ dbus-send --session \
   string:"$session_id" \
   string:"$tool_name" \
   string:"$cwd" \
-  string:"$ide_session_id"
+  string:"$ide_session_id" \
+  string:"$notification_type"

@@ -39,6 +39,7 @@
           claude.hooks.SessionStart = [{ hooks = [ mkHook ]; }];
           claude.hooks.SessionEnd = [{ hooks = [ mkHook ]; }];
           claude.hooks.Stop = [{ hooks = [ mkHook ]; }];
+          claude.hooks.UserPromptSubmit = [{ hooks = [ mkHook ]; }];
           claude.hooks.PostToolUse = [{ matcher = "AskUserQuestion"; hooks = [ mkHook ]; }];
           claude.hooks.PermissionRequest = [{ hooks = [ mkHook ]; }];
           claude.hooks.Notification = [{ hooks = [ mkHook ]; }];
