@@ -254,12 +254,11 @@ NOTIFICATION-TYPE is the notification subtype (may be empty)."
     map)
   "Keymap for `claude-code-dbus-sessions-mode'.")
 
-(eval-after-load "evil"
-  '(progn
-     (evil-define-key 'normal claude-code-dbus-sessions-mode-map
-       (kbd "RET") #'claude-code-dbus-jump-to-session)
-     (evil-define-key 'motion claude-code-dbus-sessions-mode-map
-       (kbd "RET") #'claude-code-dbus-jump-to-session)))
+(with-eval-after-load 'evil
+  (evil-define-key* 'normal claude-code-dbus-sessions-mode-map
+    (kbd "RET") #'claude-code-dbus-jump-to-session)
+  (evil-define-key* 'motion claude-code-dbus-sessions-mode-map
+    (kbd "RET") #'claude-code-dbus-jump-to-session))
 
 (define-derived-mode claude-code-dbus-sessions-mode tabulated-list-mode
   "Claude Sessions"
