@@ -1,0 +1,5 @@
+{
+  "name": "claude-code-dbus",
+  "description": "Broadcast Claude Code lifecycle events over D-Bus for external listeners (e.g. Emacs)",
+  "version": "0.1.0"
+}
