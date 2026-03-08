@@ -90,7 +90,7 @@ Returns the title string or nil."
         (when (and (boundp 'eat-terminal) eat-terminal)
           (let ((title (eat-term-title eat-terminal)))
             (when (and title (not (string-empty-p title)))
-              title))))))))
+              title)))))))
 
 (defun claude-code-dbus--setup-ide-integration ()
   "Set up integration with claude-code-ide if available."
