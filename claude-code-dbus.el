@@ -90,8 +90,7 @@ Returns the title string or nil."
         (when (and (boundp 'eat-terminal) eat-terminal)
           (let ((title (eat-term-title eat-terminal)))
             (when (and title (not (string-empty-p title)))
-              ;; Strip the braille dot prefix if present
-              (string-trim (replace-regexp-in-string "\\`⠐ *" "" title)))))))))
+              title))))))))
 
 (defun claude-code-dbus--setup-ide-integration ()
   "Set up integration with claude-code-ide if available."
@@ -256,9 +255,9 @@ NOTIFICATION-TYPE is the notification subtype (may be empty)."
   "Keymap for `claude-code-dbus-sessions-mode'.")
 
 (with-eval-after-load 'evil
-  (evil-define-key 'normal claude-code-dbus-sessions-mode-map
+  (evil-define-key* 'normal claude-code-dbus-sessions-mode-map
     (kbd "RET") #'claude-code-dbus-jump-to-session)
-  (evil-define-key 'motion claude-code-dbus-sessions-mode-map
+  (evil-define-key* 'motion claude-code-dbus-sessions-mode-map
     (kbd "RET") #'claude-code-dbus-jump-to-session))
 
 (define-derived-mode claude-code-dbus-sessions-mode tabulated-list-mode
