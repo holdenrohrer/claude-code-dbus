@@ -215,19 +215,16 @@ NOTIFICATION-TYPE is the notification subtype (may be empty)."
     (maphash
      (lambda (session-id plist)
        (let ((ide-session-id (plist-get plist :ide-session-id)))
-         ;; Only show Emacs sessions, deduplicate by ide-session-id
-         (when (and ide-session-id
-                    (not (string-empty-p ide-session-id))
-                    (not (member ide-session-id seen-ide-sessions)))
+         ;; Only show sessions owned by THIS Emacs, deduplicate by ide-session-id
+         (let ((buffer (claude-code-dbus--find-ide-buffer ide-session-id)))
+           (when (and buffer (buffer-live-p buffer)
+                      (not (member ide-session-id seen-ide-sessions)))
            (push ide-session-id seen-ide-sessions)
            (let* ((status (plist-get plist :status))
                   (event-time (plist-get plist :last-event-time))
                   (user-title (or (plist-get plist :user-title) ""))
-                  (buffer (claude-code-dbus--find-ide-buffer ide-session-id))
                   (task (or (claude-code-dbus--get-session-title ide-session-id) ""))
-                  (buf-name (or (when (and buffer (buffer-live-p buffer))
-                                  (buffer-name buffer))
-                                "")))
+                  (buf-name (buffer-name buffer)))
              (push (list session-id
                          (vector
                           (propertize (claude-code-dbus--status-string status)
@@ -239,7 +236,7 @@ NOTIFICATION-TYPE is the notification subtype (may be empty)."
                           task
                           buf-name
                           (claude-code-dbus--format-age event-time)))
-                   entries)))))
+                   entries))))))
      claude-code-dbus--sessions)
     (nreverse entries)))
 
